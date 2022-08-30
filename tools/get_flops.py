@@ -100,13 +100,13 @@ def main():
             format(model.__class__.__name__))
 
     # from IPython import embed; embed()
-    if hasattr(model.backbone, 'block1'):
-        print('#### get transformer flops ####')
-        with torch.no_grad():
-            flops, params = get_tr_flops(model, input_shape)
-    else:
-        print('#### get CNN flops ####')
-        flops, params = get_model_complexity_info(model, input_shape)
+    # if hasattr(model.backbone, 'block1'):
+    #     print('#### get transformer flops ####')
+    #     with torch.no_grad():
+    #         flops, params = get_tr_flops(model, input_shape)
+    # else:
+    print('#### get CNN flops ####')
+    flops, params = get_model_complexity_info(model, input_shape)
 
     split_line = '=' * 30
     print('{0}\nInput shape: {1}\nFlops: {2}\nParams: {3}\n{0}'.format(
