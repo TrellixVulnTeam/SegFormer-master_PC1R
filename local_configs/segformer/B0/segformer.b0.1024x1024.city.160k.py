@@ -48,4 +48,4 @@ lr_config = dict(_delete_=True, policy='poly',
                  warmup_ratio=1e-6,
                  power=1.0, min_lr=0.0, by_epoch=False)
 work_dir = 'work_dirs/0817/'
-# resume_from = '/home/zyq/SegFormer-master/work_dirs/segformer.b0.1024x1024.city.160k/latest.pth'
+resume_from = '/home/zyq/SegFormer-master/work_dirs/0817/iter_32000.pth'

@@ -18,6 +18,19 @@ from mmcv.runner import load_checkpoint
 import math
 
 
+class DWConv(nn.Module):
+    def __init__(self, dim=768):
+        super(DWConv, self).__init__()
+        self.dwconv = nn.Conv2d(dim, dim, 3, 1, 1, bias=True, groups=dim)
+
+    def forward(self, x, H, W):
+        B, N, C = x.shape
+        x = x.transpose(1, 2).view(B, C, H, W)
+        x = self.dwconv(x)
+        x = x.flatten(2).transpose(1, 2)
+
+        return x
+
 class Mlp(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
         super().__init__()
@@ -164,8 +177,8 @@ class Block(nn.Module):
 
     def forward(self, x, H, W):
         # x = x + self.drop_path(self.attn(self.norm1(x), H, W))
-        x = x + self.drop_path(self.FFT(self.norm1(x)))
-        x = x + self.drop_path(self.mlp(self.norm2(x), H, W))
+        x = x + self.norm1(self.FFT(x))
+        x = x + self.norm2(self.drop_path(self.mlp(x, H, W)))
 
         return x
 
@@ -368,18 +381,6 @@ class MixVisionTransformer(nn.Module):
         return x
 
 
-class DWConv(nn.Module):
-    def __init__(self, dim=768):
-        super(DWConv, self).__init__()
-        self.dwconv = nn.Conv2d(dim, dim, 3, 1, 1, bias=True, groups=dim)
-
-    def forward(self, x, H, W):
-        B, N, C = x.shape
-        x = x.transpose(1, 2).view(B, C, H, W)
-        x = self.dwconv(x)
-        x = x.flatten(2).transpose(1, 2)
-
-        return x
 
 
 
