@@ -1,6 +1,6 @@
 _base_ = [
     '../../_base_/models/segformer.py',
-    '../../_base_/datasets/ade20k_repeat.py',
+    '../../_base_/datasets/cityscapes_1024x1024_repeat.py',
     '../../_base_/default_runtime.py',
     '../../_base_/schedules/schedule_160k_adamw.py'
 ]
@@ -16,19 +16,21 @@ model = dict(
         style='pytorch'),
     decode_head=dict(
         type='SegFormerHead',
-        in_channels=[32, 64, 160, 256],
+        in_channels=[32,64,160,256],
         in_index=[0, 1, 2, 3],
         feature_strides=[4, 8, 16, 32],
         channels=128,
         dropout_ratio=0.1,
-        num_classes=150,
+        num_classes=19,
         norm_cfg=norm_cfg,
         align_corners=False,
         decoder_params=dict(embed_dim=256),
         loss_decode=dict(type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0)),
     # model training and testing settings
     train_cfg=dict(),
-    test_cfg=dict(mode='whole'))
+    # test_cfg=dict(mode='whole'))
+    test_cfg=dict(mode='slide', crop_size=(1024,1024), stride=(768,768)))
+
 # data
 data = dict(samples_per_gpu=1)
 evaluation = dict(interval=4000, metric='mIoU')
@@ -45,5 +47,4 @@ lr_config = dict(_delete_=True, policy='poly',
                  warmup_iters=1500,
                  warmup_ratio=1e-6,
                  power=1.0, min_lr=0.0, by_epoch=False)
-
 

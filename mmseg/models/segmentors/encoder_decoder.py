@@ -74,9 +74,9 @@ class EncoderDecoder(BaseSegmentor):
             else:
                 self.auxiliary_head.init_weights()
 
-    def extract_feat(self, img):
+    def extract_feat(self, img,img_metas=None):
         """Extract features from images."""
-        x = self.backbone(img)
+        x = self.backbone(img,img_metas=None)
         if self.with_neck:
             x = self.neck(x)
         return x
@@ -150,7 +150,7 @@ class EncoderDecoder(BaseSegmentor):
             dict[str, Tensor]: a dictionary of loss components
         """
 
-        x = self.extract_feat(img)
+        x = self.extract_feat(img,img_metas)
 
         losses = dict()
 

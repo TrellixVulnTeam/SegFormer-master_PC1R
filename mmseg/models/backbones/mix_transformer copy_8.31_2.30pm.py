@@ -3,6 +3,7 @@
 #
 # This work is licensed under the NVIDIA Source Code License
 # ---------------------------------------------------------------
+from modulefinder import Module
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -15,8 +16,8 @@ from mmseg.models.builder import BACKBONES
 from mmseg.utils import get_root_logger
 from mmcv.runner import load_checkpoint
 import math
-import pdb
-torch.random.manual_seed(2022)
+
+
 class DWConv(nn.Module):
     def __init__(self, dim=768):
         super(DWConv, self).__init__()
@@ -29,104 +30,6 @@ class DWConv(nn.Module):
         x = x.flatten(2).transpose(1, 2)
 
         return x
-
-class Conv7(nn.Module):
-    def __init__(self, dim=768):
-        super(Conv7, self).__init__()
-        self.conv = nn.Conv2d(dim, dim, 7, stride=1,padding=3, bias=False, groups=dim)
-
-    def forward(self, x, H, W):
-        # pdb.set_trace()
-        B, N, C = x.shape
-        x = x.transpose(1, 2).view(B, C, H, W)
-        x = self.conv(x)
-        x = x.flatten(2).transpose(1, 2)
-
-        return x
-
-class DCT_conv(nn.Module):
-    def __init__(self, dim=768,freq =[1,7,2,8,15]):
-        super(DCT_conv, self).__init__()
-        # pdb.set_trace()
-        dct_weight=torch.load('/home/zyq/SegFormer-master/dct_weight7.t').cuda()
-        self.dim=dim
-        self.dct_weight=dct_weight[freq].repeat(self.dim,1,1,1)
-        self.linear=nn.Linear(dim*len(freq),dim)
-
-
-    def forward(self, x, H, W):
-        B, N, C = x.shape
-        x = x.transpose(1, 2).view(B, C, H, W)
-        x = F.conv2d(input=x,weight=self.dct_weight,padding=3,groups=self.dim)
-        x = x.flatten(2).transpose(1, 2)
-        x = self.linear(x)
-        return x
-
-
-class FFmlp(nn.Module):
-   
-
-    def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
-        super().__init__()
-
-        out_features = out_features or in_features
-        hidden_features =in_features
-        self.fc1 = nn.Linear(in_features, hidden_features)
-        inflate_features=max(256,out_features*2)
-        self.inflate_weight=torch.empty(inflate_features,hidden_features).normal_(mean=0,std=10).cuda()
-        print(self.inflate_weight[0][0])
-        self.dwconv = DWConv(inflate_features*2)
-        self.act = act_layer()
-        self.fc2 = nn.Linear(inflate_features*2, out_features)
-        self.drop = nn.Dropout(drop)
-
-        self.apply(self._init_weights)
-
-    def _init_weights(self, m):
-        if isinstance(m, nn.Linear):
-            trunc_normal_(m.weight, std=.02)
-            if isinstance(m, nn.Linear) and m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-        elif isinstance(m, nn.LayerNorm):
-            nn.init.constant_(m.bias, 0)
-            nn.init.constant_(m.weight, 1.0)
-        elif isinstance(m, nn.Conv2d):
-            fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-            fan_out //= m.groups
-            m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
-            if m.bias is not None:
-                m.bias.data.zero_()
-
-    def forward(self, x, H, W):
-
-        # pdb.set_trace()
-        x = self.fc1(x)
-        x = self.drop(x)
-        x=self.act(x)
-        x=2*3.1415*F.linear(x,self.inflate_weight)
-        x=torch.cat((x.sin(),x.cos()),dim=-1)
-       
-        x = self.dwconv(x, H, W) 
-        x = self.act(x)
-        x = self.fc2(x)
-        x = self.drop(x)
-        return x
-
-
-class ColorEmbedding(nn.Module):
-    def __init__(self, out_dim=32):
-        super().__init__()
-        self.inflate_weight=torch.empty(out_dim,3).normal_(mean=0,std=10).cuda()
-        self.act=nn.GELU()
-
-    def forward(self, x):
-        # pdb.set_trace()
-        x=x.permute(0,2,3,1)
-        x=F.linear(x,self.inflate_weight)
-        x=self.act(x)
-        x=x.permute(0,3,1 ,2)
-        return x
-
 
 class Mlp(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
@@ -240,15 +143,10 @@ class BasicFourierTransform(nn.Module):
 class Block(nn.Module):
 
     def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
-                 drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, sr_ratio=1,ffmlp=False,dct=False):
+                 drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, sr_ratio=1):
         super().__init__()
         self.norm1 = norm_layer(dim)
         self.FFT = BasicFourierTransform()
-        
-        if dct :
-            self.DCT = DCT_conv(dim)
-        else :
-            self.DCT=None
         # self.iFFT = torch.fft.ifft2
         # self.attn = Attention(
         #     dim,
@@ -258,11 +156,8 @@ class Block(nn.Module):
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
-        if ffmlp: 
-            self.mlp = FFmlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
-        else :
-            self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
-        
+        self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
+
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
@@ -280,12 +175,9 @@ class Block(nn.Module):
             if m.bias is not None:
                 m.bias.data.zero_()
 
-    def forward(self, x, H, W,img_metas=None):
+    def forward(self, x, H, W):
         # x = x + self.drop_path(self.attn(self.norm1(x), H, W))
-        # pdb.set_trace()
         x = x + self.norm1(self.FFT(x))
-        if self.DCT is not None:
-            x=x+self.norm1(self.DCT(x,H,W))
         x = x + self.norm2(self.drop_path(self.mlp(x, H, W)))
 
         return x
@@ -325,7 +217,7 @@ class OverlapPatchEmbed(nn.Module):
             if m.bias is not None:
                 m.bias.data.zero_()
 
-    def forward(self, x,img_metas=None):
+    def forward(self, x):
         x = self.proj(x)
         _, _, H, W = x.shape
         x = x.flatten(2).transpose(1, 2)
@@ -342,8 +234,6 @@ class MixVisionTransformer(nn.Module):
         super().__init__()
         self.num_classes = num_classes
         self.depths = depths
-        in_chans=64
-        self.color_embed=ColorEmbedding(in_chans)
 
         # patch_embed
         self.patch_embed1 = OverlapPatchEmbed(img_size=img_size, patch_size=7, stride=4, in_chans=in_chans,
@@ -446,47 +336,46 @@ class MixVisionTransformer(nn.Module):
         self.num_classes = num_classes
         self.head = nn.Linear(self.embed_dim, num_classes) if num_classes > 0 else nn.Identity()
 
-    def forward_features(self, x,img_metas=None):
+    def forward_features(self, x):
         B = x.shape[0]
         outs = []
-        x=self.color_embed(x)
 
         # stage 1
-        x, H, W = self.patch_embed1(x,img_metas)
+        x, H, W = self.patch_embed1(x)
         for i, blk in enumerate(self.block1):
-            x = blk(x, H, W,img_metas)
+            x = blk(x, H, W)
         x = self.norm1(x)
         x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous()
         outs.append(x)
 
         # stage 2
-        x, H, W = self.patch_embed2(x,img_metas)
+        x, H, W = self.patch_embed2(x)
         for i, blk in enumerate(self.block2):
-            x = blk(x, H, W,img_metas)
+            x = blk(x, H, W)
         x = self.norm2(x)
         x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous()
         outs.append(x)
 
         # stage 3
-        x, H, W = self.patch_embed3(x,img_metas)
+        x, H, W = self.patch_embed3(x)
         for i, blk in enumerate(self.block3):
-            x = blk(x, H, W,img_metas)
+            x = blk(x, H, W)
         x = self.norm3(x)
         x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous()
         outs.append(x)
 
         # stage 4
-        x, H, W = self.patch_embed4(x,img_metas)
+        x, H, W = self.patch_embed4(x)
         for i, blk in enumerate(self.block4):
-            x = blk(x, H, W,img_metas)
+            x = blk(x, H, W)
         x = self.norm4(x)
         x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous()
         outs.append(x)
 
         return outs
 
-    def forward(self, x,img_metas=None):
-        x = self.forward_features(x,img_metas)
+    def forward(self, x):
+        x = self.forward_features(x)
         # x = self.head(x)
 
         return x
